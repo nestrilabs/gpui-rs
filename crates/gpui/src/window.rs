@@ -1457,10 +1457,6 @@ impl Window {
             move |active| {
                 handle
                     .update(&mut cx, |_, window, cx| {
-                        if !active {
-                            cx.platform.set_cursor_style(CursorStyle::Arrow);
-                        }
-
                         window.active.set(active);
                         window.modifiers = window.platform_window.modifiers();
                         window.capslock = window.platform_window.capslock();
@@ -4497,6 +4493,14 @@ impl Window {
         } else if let Some(key_down_event) = event.downcast_ref::<KeyDownEvent>() {
             self.pending_modifier.saw_keystroke = true;
             keystroke = Some(key_down_event.keystroke.clone());
+            if key_down_event.keystroke.key_char.is_some()
+                && matches!(
+                    cx.cursor_hide_mode,
+                    CursorHideMode::OnTyping | CursorHideMode::OnTypingAndAction
+                )
+            {
+                cx.platform.hide_cursor_until_mouse_moves();
+            }
         }
 
         let Some(keystroke) = keystroke else {
@@ -4758,6 +4762,22 @@ impl Window {
     }
 
     fn dispatch_action_on_node(
+        &mut self,
+        node_id: DispatchNodeId,
+        action: &dyn Action,
+        cx: &mut App,
+    ) {
+        self.dispatch_action_on_node_inner(node_id, action, cx);
+
+        if !cx.propagate_event
+            && cx.cursor_hide_mode == CursorHideMode::OnTypingAndAction
+            && self.last_input_was_keyboard()
+        {
+            cx.platform.hide_cursor_until_mouse_moves();
+        }
+    }
+
+    fn dispatch_action_on_node_inner(
         &mut self,
         node_id: DispatchNodeId,
         action: &dyn Action,
